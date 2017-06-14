@@ -37,6 +37,7 @@ module.exports = {
         const STATE_MSG = "`{{funcName}}` : STATE : `{{name }}` is a non-local variable referenced from within `{{funcName}}` on line `{{lineNum}}`"
         const EXPECTED_LF_MSG = "Expected linebreaks to be 'LF' but found 'CRLF'.",
             EXPECTED_CRLF_MSG = "Expected linebreaks to be 'CRLF' but found 'LF'.";
+        const SECOND_ORDER_MSG = "`{{funcName}}` : SECOND_ORDER : `{{funcCall}}` is a second-order function call within this method"
 
         const sourceCode = context.getSourceCode();
 
@@ -112,6 +113,27 @@ module.exports = {
             }
             return false;
         }
+
+        var declareSecondOrderState = function(node){
+            var funcName = ''
+            if(functionStack.length !== 0){
+                var scope = functionStack[functionStack.length-1];
+                funcName = scope.func.id ? scope.func.id : '';
+                if(funcName === '' && scope.func.parent.id){
+                    funcName = scope.func.parent.id.name;
+                }
+            }
+            var funcCall = node.callee.name;
+            context.report({
+                node,
+                message: SECOND_ORDER_MSG,
+                data: {
+                    funcName,
+                    funcCall
+                }
+            });
+            return true;
+        }
         //--------------------------------------------------------------------------
         // Helpers
         //--------------------------------------------------------------------------
@@ -126,6 +148,7 @@ module.exports = {
             FunctionDeclaration: pushFunctionToStack,
             "FunctionExpression:exit": popFunctionFromStack,
             "FunctionDeclaration:exit": popFunctionFromStack,
+            CallExpression: declareSecondOrderState,
             VariableDeclaration: function(node) {
                 if(functionStack.length == 0){
                     return;
