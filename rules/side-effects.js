@@ -42,7 +42,7 @@ module.exports = {
         const sourceCode = context.getSourceCode();
 
         var pushFunctionToStack = function(node){
-            functionStack.push({func: node, localVars: {}, excludes: {}});
+            functionStack.push({func: node, localVars: {}, nonLocalVars: {}, excludes: {}});
         }
 
         var popFunctionFromStack = function(node){
@@ -57,6 +57,7 @@ module.exports = {
                     funcName = scope.func.parent.id.name;
                 }
                 var lineNum = node.loc.start.line;
+                nonLocalVars[name] = node.left;
                 context.report({
                     node,
                     message: SIDE_EFFECT_MSG,
@@ -70,7 +71,7 @@ module.exports = {
             }
         };
         var checkForStateDeclarator = function(node,scope){
-            if(!!node.init.name && !scope.localVars.hasOwnProperty(node.init.name.split('.')[0])) {
+            if(!!node.init.name && (!scope.localVars.hasOwnProperty(node.init.name.split('.')[0])) || !!scope.nonLocalVars.hasOwnProperty(node.init.name.split('.')[0])) {
                 var name = node.init.name;
                 var funcName = scope.func.id ? scope.func.id : '';
                 if(funcName === '' && scope.func.parent.id){
@@ -174,5 +175,8 @@ module.exports = {
             }
 
         };
+        /* TODO
+         * TODO: constraint consistency problems for local variable(i.e if a local variable is assigned a state value,
+         */
     }
 };
