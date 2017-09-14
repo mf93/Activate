@@ -1,6 +1,6 @@
 /**
- * @fileoverview Rule to enforce a single linebreak style.
- * @author Erik Mueller
+ * @fileoverview Rule to map out all state and side effects in a pedantic way for unit testing
+ * @author Matt Feld
  */
 
 "use strict";
@@ -35,14 +35,12 @@ module.exports = {
     create(context) {
         const SIDE_EFFECT_MSG = "`{{funcName}}`: SIDE EFFECT : `{{name}}` is a side effect on line `{{lineNum}}`";
         const STATE_MSG = "`{{funcName}}` : STATE : `{{name }}` is a non-local variable referenced from within `{{funcName}}` on line `{{lineNum}}`"
-        const EXPECTED_LF_MSG = "Expected linebreaks to be 'LF' but found 'CRLF'.",
-            EXPECTED_CRLF_MSG = "Expected linebreaks to be 'CRLF' but found 'LF'.";
         const SECOND_ORDER_MSG = "`{{funcName}}` : SECOND_ORDER : `{{funcCall}}` is a second-order function call within this method"
 
         const sourceCode = context.getSourceCode();
 
         var pushFunctionToStack = function(node){
-            functionStack.push({func: node, localVars: {}, nonLocalVars: {}, excludes: {}});
+            functionStack.push({func: node, localVars: {}, nonLocalVars: {}});
         }
 
         var popFunctionFromStack = function(node){
@@ -50,7 +48,9 @@ module.exports = {
         }
 
         var checkForSideEffects = function(node, scope) {
-            if(!!scope && !scope.localVars.hasOwnProperty(node.left.name.split('.')[0]) || Object.keys(node.excludes).some(function(k){ return ~k.startsWith(node.left.name) })){
+            var nonLocalVar = !!scope && !scope.localVars.hasOwnProperty(node.left.name.split('.')[0]);
+            // var receivedState = !!scope && Object.keys(scope.nonLocalVars).some(function(k){ return node.left.name.startsWith(k) });
+            if( nonLocalVar ){//|| receivedState){
                 var name = node.left.name;
                 var funcName = scope.func.id ? scope.func.id : '';
                 if(funcName === '' && scope.func.parent.id){
@@ -71,7 +71,9 @@ module.exports = {
             }
         };
         var checkForStateDeclarator = function(node,scope){
-            if(!!node.init.name && (!scope.localVars.hasOwnProperty(node.init.name.split('.')[0])) || !!scope.nonLocalVars.hasOwnProperty(node.init.name.split('.')[0])) {
+            var isNonLocalVar = !!node.init.name && !scope.localVars.hasOwnProperty(node.init.name.split('.')[0]);
+            //var isTransitiveState = !!scope.nonLocalVars.hasOwnProperty(node.init.name.split('.')[0];
+            if( isNonLocalVar ) {
                 var name = node.init.name;
                 var funcName = scope.func.id ? scope.func.id : '';
                 if(funcName === '' && scope.func.parent.id){
@@ -88,12 +90,15 @@ module.exports = {
 
                     }
                 });
+                scope.nonLocalVars[node.id.name] = node.id;
                 return true;
             }
             return false;
         }
         var checkForStateAssignment = function(node, scope){
-            if(!!node.right.name && !scope.localVars.hasOwnProperty(node.right.name.split('.')[0])){
+            var notInLocalScope = !!node.right.name && !scope.localVars.hasOwnProperty(node.right.name.split('.')[0]);
+            //var transitiveStateAssignment = !!node.right.name && Object.keys(scope.nonLocalVars).some(function(k){ return node.right.name.startsWith(k) });
+            if(notInLocalScope){// || transitiveStateAssignment){
                 var name = node.right.name;
                 var funcName = scope.func.id ? scope.func.id : '';
                 if(funcName === '' && scope.func.parent.id){
@@ -110,7 +115,11 @@ module.exports = {
 
                     }
                 });
+                scope.nonLocalVars[node.left.name] = node.left.name;
                 return true;
+            }
+            if(node.operator === '='){
+                delete scope.nonLocalVars[node.left.name];
             }
             return false;
         }
