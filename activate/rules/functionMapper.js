@@ -10,6 +10,10 @@
 //------------------------------------------------------------------------------
 
 const astUtils = require("../node_modules/eslint/lib/ast-utils");
+const constants = require('../constants');
+const types = constants.types;
+const subtypes = constants.subtypes;
+
 
 //------------------------------------------------------------------------------
 // Rule Definition
@@ -33,9 +37,14 @@ module.exports = {
     },
 
     create(context) {
-        const SIDE_EFFECT_MSG = "`{{funcName}}`: SIDE EFFECT : `{{name}}` is a side effect on line `{{lineNum}}`";
+
+        const treeTools = require('../lib/TreeTools')(context);
+
+        const SIDE_EFFECT_MSG = "{{funcName}}: SIDE EFFECT : `{{name}}` is a side effect on line `{{lineNum}}`";
         const STATE_MSG = "`{{funcName}}` : STATE : `{{name }}` is a non-local variable referenced from within `{{funcName}}` on line `{{lineNum}}`"
         const SECOND_ORDER_MSG = "`{{funcName}}` : SECOND_ORDER : `{{funcCall}}` is a second-order function call within this method"
+
+        const MSG_TEMPLATE = "{{funcName}}:{{type}}:{{subtype}}:{{varName}}:{{line}}";
 
         const sourceCode = context.getSourceCode();
 
@@ -47,7 +56,39 @@ module.exports = {
             functionStack.pop();
         }
 
-        var reportFunctionCall = function(node, scope) {
+        var createReport = function(node, msg){
+            context.report({
+                node,
+                message: MSG_TEMPLATE,
+                data: {
+                    funcName: msg.funcName,
+                    type: msg.type,
+                    subtype: msg.subtype,
+                    varName: msg.varName,
+                    line: msg.line
+                }
+            });
+        };
+
+        var determineAndReportFunctionCall = function(node) {
+            var funcName = ''
+            if (functionStack.length !== 0) {
+                var scope = functionStack[functionStack.length - 1];
+                funcName = scope.func.id ? scope.func.id : '';
+                if (funcName === '' && scope.func.parent.id) {
+                    funcName = scope.func.parent.id.name;
+                }
+            }
+            var funcCall = node.callee.name;
+
+            return true;
+        };
+        var reportBasicFunctionCall = function(node, scope) {
+
+        }
+
+        //determine if line has input
+        var determineAndReportInput = function(node, scope){
 
         };
 
@@ -55,9 +96,7 @@ module.exports = {
         var reportFunctionInput = function (node, scope) {
 
         };
-        var reportStateInput = function (node, scope) {
 
-        };
         var reportReturnedFunctionCallInput = function (node, scope) {
 
         };
@@ -67,16 +106,39 @@ module.exports = {
         var reportParametersInput = function(node, scope){
 
         };
+        var reportNewDeclarationInput = function(node,scope){
+
+        };
 
         //Input Discovery
+        var isNewDeclaration = function(node, scope){
+
+        };
         var isChainedFunctionCall = function (node, scope) {
 
         };
         var isReturnedFunctionCall = function (node, scope) {
 
         };
-        var isOutsideLocalScope = function (node, scope) {
 
+
+        var isOutsideLocalScope = function (node, scope) {
+            return !!node.right.name && !scope.localVars.hasOwnProperty(node.right.name.split('.')[0]);
+        };
+        var reportStateInput = function (node, scope) {
+            var name = node.right.name;
+            var funcName = scope.func.id ? scope.func.id : '';
+            if (funcName === '' && scope.func.parent.id) {
+                funcName = scope.func.parent.id.name;
+            }
+            var line = sourceCode.getText(node);
+            createReport(node, {
+                funcName: funcName,
+                type: types.INPUT,
+                subtype: subtypes.input.STATE,
+                varName: node.right.name,
+                line: line
+            });
         };
 
         //Output Reporting
@@ -156,27 +218,12 @@ module.exports = {
             }
             return false;
         }
-        var isAssignmentInput = function (node, scope) {
-            var notInLocalScope = !!node.right.name && !scope.localVars.hasOwnProperty(node.right.name.split('.')[0]);
-            //var transitiveStateAssignment = !!node.right.name && Object.keys(scope.nonLocalVars).some(function(k){ return node.right.name.startsWith(k) });
-            if (notInLocalScope) {// || transitiveStateAssignment){
-                var name = node.right.name;
-                var funcName = scope.func.id ? scope.func.id : '';
-                if (funcName === '' && scope.func.parent.id) {
-                    funcName = scope.func.parent.id.name;
-                }
-                var lineNum = node.loc.start.line;
-                context.report({
-                    node,
-                    message: STATE_MSG,
-                    data: {
-                        name,
-                        funcName,
-                        lineNum
+        var checkAssignmentExpression = function (node, scope) {
 
-                    }
-                });
-                scope.nonLocalVars[node.left.name] = node.left.name;
+            //var transitiveStateAssignment = !!node.right.name && Object.keys(scope.nonLocalVars).some(function(k){ return node.right.name.startsWith(k) });
+            if (isOutsideLocalScope(node,scope)) {// || transitiveStateAssignment){
+                reportStateInput(node,scope);
+                scope.nonLocalVars[node.left.name] = node.right.name;
                 return true;
             }
             if (node.operator === '=') {
@@ -237,10 +284,9 @@ module.exports = {
 
                 var scope = functionStack[functionStack.length - 1];
                 //TODO: need to only check first part of name and only first part if it is an array
-                //TODO: if it is a local variable, will need to account for state first and make sure that variable isn't just grabbing a reference to an external variable
                 //TODO: need to account for this statement
                 isOutput(node, scope);
-                isAssignmentInput(node, scope);
+                checkAssignmentExpression(node, scope);
 
             }
 

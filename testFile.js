@@ -1,7 +1,7 @@
 /**
  * Created by mafeld on 4/14/2017.
  */
-var state = 5, state2 = 5;
+var state = {value: 5}, state2 = 5;
 var effect = 6;
 var another_state = 5;
 
@@ -17,6 +17,7 @@ var foo = function(parm1, parm2){
 
     //STATE
     local = state;
+    var nonlocal = local.thing;
 
     //no warnings
     var testState = 6;
